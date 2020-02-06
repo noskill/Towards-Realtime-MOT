@@ -19,19 +19,20 @@ from .basetrack import BaseTrack, TrackState
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
-    def __init__(self, tlwh, score, temp_feat, buffer_size=30):
+    def __init__(self, tlwh, score, temp_feat, buffer_size=30, feat_size=10):
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
         self.kalman_filter = None
         self.mean, self.covariance = None, None
         self.is_activated = False
+        self.curr_feat = np.random.random(10)
+        self.smooth_feat = np.random.random(10)
 
         self.score = score
         self.tracklet_len = 0
-
-        self.smooth_feat = None
-        self.update_features(temp_feat)
+        if temp_feat is not None:
+            self.update_features(temp_feat)
         self.features = deque([], maxlen=buffer_size)
         self.alpha = 0.9
     
@@ -186,28 +187,15 @@ class JDETracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self, im_blob, img0):
-        self.frame_id += 1
+    def update(self, detections, num=1):
+        self.frame_id += num
         activated_starcks = []
         refind_stracks = []
         lost_stracks = []
         removed_stracks = []
 
         t1 = time.time()
-        ''' Step 1: Network forward, get detections & embeddings'''
-        with torch.no_grad():
-            pred = self.model(im_blob)
-        pred = pred[pred[:, :, 4] > self.opt.conf_thres]
-        if len(pred) > 0:
-            dets = non_max_suppression(pred.unsqueeze(0), self.opt.conf_thres, 
-                                       self.opt.nms_thres)[0]
-            scale_coords(self.opt.img_size, dets[:, :4], img0.shape).round()
-            dets, embs = dets[:, :5].cpu().numpy(), dets[:, 6:].cpu().numpy()
-            '''Detections'''
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f, 30) for
-                          (tlbrs, f) in zip(dets, embs)]
-        else:
-            detections = []
+
 
         ''' Add newly detected tracklets to tracked_stracks'''
         unconfirmed = []
@@ -222,10 +210,7 @@ class JDETracker(object):
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
         STrack.multi_predict(strack_pool)
-        dists = matching.embedding_distance(strack_pool, detections)
-        dists = matching.fuse_motion(self.kalman_filter, dists, strack_pool, detections)
-        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.7)
-
+        matches, u_detection, u_track = self.match(detections, strack_pool)
         for itracked, idet in matches:
             track = strack_pool[itracked]
             det = detections[idet]
@@ -302,6 +287,13 @@ class JDETracker(object):
         logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
         logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
         return output_stracks
+
+    def match(self, detections, strack_pool):
+        dists = matching.embedding_distance(strack_pool, detections)
+        dists = matching.fuse_motion(self.kalman_filter, dists, strack_pool, detections)
+        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.7)
+        return matches, u_detection, u_track
+
 
 def joint_stracks(tlista, tlistb):
     exists = {}

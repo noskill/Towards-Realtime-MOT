@@ -6,7 +6,7 @@ import argparse
 import motmetrics as mm
 
 import torch
-from tracker.multitracker import JDETracker
+from tracker.multitracker import JDETracker, STrack
 from utils import visualization as vis
 from utils.log import logger
 from utils.timer import Timer
@@ -52,7 +52,10 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
         # run tracking
         timer.tic()
         blob = torch.from_numpy(img).cuda().unsqueeze(0)
-        online_targets = tracker.update(blob, img0)
+        import pdb;pdb.set_trace()
+        ''' Step 1: Network forward, get detections & embeddings'''
+        detections = mot_detector(img0, blob, tracker)
+        online_targets = tracker.update(detections, 1)
         online_tlwhs = []
         online_ids = []
         for t in online_targets:
@@ -70,6 +73,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
                                           fps=1. / timer.average_time)
         if show_image:
             cv2.imshow('online_im', online_im)
+            cv2.waitKey(1000)
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, '{:05d}.jpg'.format(frame_id)), online_im)
         frame_id += 1
@@ -78,13 +82,29 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     return frame_id, timer.average_time, timer.calls
 
 
+def mot_detector(img0, im_blob, tracker):
+    with torch.no_grad():
+        pred = tracker.model(im_blob)
+    pred = pred[pred[:, :, 4] > tracker.opt.conf_thres]
+    if len(pred) > 0:
+        dets = non_max_suppression(pred.unsqueeze(0), tracker.opt.conf_thres,
+                                   tracker.opt.nms_thres)[0]
+        scale_coords(tracker.opt.img_size, dets[:, :4], img0.shape).round()
+        dets, embs = dets[:, :5].cpu().numpy(), dets[:, 6:].cpu().numpy()
+        '''Detections'''
+        detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f, 30) for
+                      (tlbrs, f) in zip(dets, embs)]
+    else:
+        detections = []
+    return detections
+
+
 def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), exp_name='demo', 
          save_images=False, save_videos=False, show_image=True):
     logger.setLevel(logging.INFO)
-    result_root = os.path.join(data_root, '..', 'results', exp_name)
+    result_root = os.path.join(".", '..', 'results', exp_name)
     mkdir_if_missing(result_root)
     data_type = 'mot'
-
     # Read config
     cfg_dict = parse_model_cfg(opt.cfg)
     opt.img_size = [int(cfg_dict[0]['width']), int(cfg_dict[0]['height'])]
@@ -94,7 +114,7 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
     n_frame = 0
     timer_avgs, timer_calls = [], []
     for seq in seqs:
-        output_dir = os.path.join(data_root, '..','outputs', exp_name, seq) if save_images or save_videos else None
+        output_dir = os.path.join(".", '..','outputs', exp_name, seq) if save_images or save_videos else None
 
         logger.info('start seq: {}'.format(seq))
         dataloader = datasets.LoadImages(osp.join(data_root, seq, 'img1'), opt.img_size)
@@ -111,6 +131,7 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
         logger.info('Evaluate seq: {}'.format(seq))
         evaluator = Evaluator(data_root, seq, data_type)
         accs.append(evaluator.eval_file(result_filename))
+
         if save_videos:
             output_video_path = osp.join(output_dir, '{}.mp4'.format(seq))
             cmd_str = 'ffmpeg -f image2 -i {}/%05d.jpg -c:v copy {}'.format(output_dir, output_video_path)
@@ -150,32 +171,18 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     print(opt, end='\n\n')
  
-    if not opt.test_mot16:
-        seqs_str = '''MOT17-02-SDP
-                      MOT17-04-SDP
-                      MOT17-05-SDP
-                      MOT17-09-SDP
-                      MOT17-10-SDP
-                      MOT17-11-SDP
-                      MOT17-13-SDP
-                    '''
-        data_root = '/home/wangzd/datasets/MOT/MOT17/images/train'
-    else:
-        seqs_str = '''MOT16-01
-                     MOT16-03
-                     MOT16-06
-                     MOT16-07
-                     MOT16-08
-                     MOT16-12
-                     MOT16-14'''
-        data_root = '/home/wangzd/datasets/MOT/MOT16/images/test'
+
+    data_root = "/mnt/fileserver/shared/datasets/MOT/MOT17Det/test/"
+    data_root = '/home/noskill/1/'
+    seqs_str = 'MOT17-06 MOT17-03  MOT17-01  MOT17-07  MOT17-08  MOT17-12 MOT17-14 '
+    seqs_str = 'NewFolder 1'
     seqs = [seq.strip() for seq in seqs_str.split()]
 
     main(opt,
          data_root=data_root,
          seqs=seqs,
          exp_name=opt.weights.split('/')[-2],
-         show_image=False,
+         show_image=True,
          save_images=opt.save_images, 
          save_videos=opt.save_videos)
 
