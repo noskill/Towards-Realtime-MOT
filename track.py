@@ -6,7 +6,8 @@ import argparse
 import motmetrics as mm
 
 import torch
-from tracker.multitracker import JDETracker, STrack
+from tracker.multitracker import STrack
+from multidetector import SubstractorTracker
 from utils import visualization as vis
 from utils.log import logger
 from utils.timer import Timer
@@ -41,7 +42,7 @@ def write_results(filename, results, data_type):
 def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_image=True, frame_rate=30):
     if save_dir:
         mkdir_if_missing(save_dir)
-    tracker = JDETracker(opt, frame_rate=frame_rate)
+    tracker = SubstractorTracker(opt, frame_rate=frame_rate)
     timer = Timer()
     results = []
     frame_id = 0
@@ -52,10 +53,10 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
         # run tracking
         timer.tic()
         blob = torch.from_numpy(img).cuda().unsqueeze(0)
-        import pdb;pdb.set_trace()
         ''' Step 1: Network forward, get detections & embeddings'''
-        detections = mot_detector(img0, blob, tracker)
-        online_targets = tracker.update(detections, 1)
+
+        online_targets = tracker.update(img0, blob)
+        #detections = substractor_detect(blob)
         online_tlwhs = []
         online_ids = []
         for t in online_targets:
@@ -82,26 +83,9 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     return frame_id, timer.average_time, timer.calls
 
 
-def mot_detector(img0, im_blob, tracker):
-    with torch.no_grad():
-        pred = tracker.model(im_blob)
-    pred = pred[pred[:, :, 4] > tracker.opt.conf_thres]
-    if len(pred) > 0:
-        dets = non_max_suppression(pred.unsqueeze(0), tracker.opt.conf_thres,
-                                   tracker.opt.nms_thres)[0]
-        scale_coords(tracker.opt.img_size, dets[:, :4], img0.shape).round()
-        dets, embs = dets[:, :5].cpu().numpy(), dets[:, 6:].cpu().numpy()
-        '''Detections'''
-        detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f, 30) for
-                      (tlbrs, f) in zip(dets, embs)]
-    else:
-        detections = []
-    return detections
-
-
 def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), exp_name='demo', 
          save_images=False, save_videos=False, show_image=True):
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     result_root = os.path.join(".", '..', 'results', exp_name)
     mkdir_if_missing(result_root)
     data_type = 'mot'
@@ -170,12 +154,15 @@ if __name__ == '__main__':
     parser.add_argument('--save-videos', action='store_true', help='save tracking results (video)')
     opt = parser.parse_args()
     print(opt, end='\n\n')
- 
+
+
 
     data_root = "/mnt/fileserver/shared/datasets/MOT/MOT17Det/test/"
+    seqs_str = 'MOT17-03 MOT17-06  MOT17-01  MOT17-07  MOT17-08  MOT17-12 MOT17-14 '
     data_root = '/home/noskill/1/'
-    seqs_str = 'MOT17-06 MOT17-03  MOT17-01  MOT17-07  MOT17-08  MOT17-12 MOT17-14 '
     seqs_str = 'NewFolder 1'
+
+
     seqs = [seq.strip() for seq in seqs_str.split()]
 
     main(opt,

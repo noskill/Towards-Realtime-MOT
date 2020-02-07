@@ -7,6 +7,7 @@ def get_logger(name='root'):
         fmt='%(asctime)s [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
     handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
     handler.setFormatter(formatter)
 
     logger = logging.getLogger(name)
