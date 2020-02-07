@@ -159,8 +159,9 @@ if __name__ == '__main__':
 
     data_root = "/mnt/fileserver/shared/datasets/MOT/MOT17Det/test/"
     seqs_str = 'MOT17-03 MOT17-06  MOT17-01  MOT17-07  MOT17-08  MOT17-12 MOT17-14 '
-    data_root = '/home/noskill/1/'
-    seqs_str = 'NewFolder 1'
+
+    data_root = '/mnt/fileserver/shared/datasets/streetscene/Test/'
+    seqs_str = 'test001_mot 1'
 
 
     seqs = [seq.strip() for seq in seqs_str.split()]
