@@ -89,7 +89,7 @@ class SubstracktorDetector:
         #apply background substraction
         fgmask = self.substractor.apply(frame)
         fgmask = cv2.medianBlur(fgmask, 3)
-        elemDilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+        elemDilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4,4))
         fgmask = cv2.dilate(fgmask, elemDilate)
         contours, hierarchy = cv2.findContours(fgmask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

@@ -1,5 +1,6 @@
 from tracker.multitracker import JDETracker, STrack, mot_detector
 from substractor import SubstracktorDetector
+from utils import visualization as vis
 
 
 class SubstractorTracker(JDETracker):
@@ -16,5 +17,12 @@ class SubstractorTracker(JDETracker):
         self.frame_id += 1
         # output_stracks = self._update(detections)
         detections1 = self.substractor.detect(img0)
-        output_stracks = self._update(detections1)
+        output_stracks, activated = self._update(detections1)
+        frame = vis.plot_tracking(img0,
+                          [act.tlwh for act in activated],
+                          [act.track_id for act in activated],
+                          frame_id=self.frame_id,
+                              fps=1.)
+        import cv2
+        cv2.imshow('debug', frame)
         return output_stracks

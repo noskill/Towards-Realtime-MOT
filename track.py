@@ -46,6 +46,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     timer = Timer()
     results = []
     frame_id = 0
+    manualMode = True
     for path, img, img0 in dataloader:
         if frame_id % 20 == 0:
             logger.info('Processing frame {} ({:.2f} fps)'.format(frame_id, 1./max(1e-5, timer.average_time)))
@@ -62,8 +63,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
         for t in online_targets:
             tlwh = t.tlwh
             tid = t.track_id
-            vertical = tlwh[2] / tlwh[3] > 1.6
-            if tlwh[2] * tlwh[3] > opt.min_box_area and not vertical:
+            if tlwh[2] * tlwh[3] > opt.min_box_area and (t.tracklet_len > 2):
                 online_tlwhs.append(tlwh)
                 online_ids.append(tid)
         timer.toc()
@@ -74,7 +74,12 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
                                           fps=1. / timer.average_time)
         if show_image:
             cv2.imshow('online_im', online_im)
-            cv2.waitKey(1000)
+            wait_time = 0 if manualMode else 1
+            k: int = cv2.waitKey(wait_time)
+            if (k == ord('q')):
+                break
+            elif k == ord('m') or k == ord('M'):
+                manualMode = not manualMode
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, '{:05d}.jpg'.format(frame_id)), online_im)
         frame_id += 1

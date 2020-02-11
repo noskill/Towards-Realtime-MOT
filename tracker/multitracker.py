@@ -202,6 +202,7 @@ class JDETracker(object):
         self.removed_stracks = []  # type: list[STrack]
 
         self.frame_id = 0
+        self.predicted_frame_id = 0
         self.det_thresh = opt.conf_thres
         self.buffer_size = int(frame_rate / 30.0 * opt.track_buffer)
         self.max_time_lost = self.buffer_size
@@ -214,7 +215,7 @@ class JDETracker(object):
                                   self.opt.nms_thres,
                                   self.opt.img_size)
         self.frame_id += 1
-        output_stracks = self._update(detections)
+        output_stracks, activated = self._update(detections)
         return output_stracks
 
     def _update(self, detections):
@@ -234,7 +235,9 @@ class JDETracker(object):
         ''' Step 2: First association, with embedding'''
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
-        STrack.multi_predict(strack_pool)
+        if self.frame_id != self.predicted_frame_id:
+            STrack.multi_predict(strack_pool)
+            self.predicted_frame_id = self.frame_id
         matches, u_detection, u_track = self.match(detections, strack_pool)
         for itracked, idet in matches:
             track = strack_pool[itracked]
@@ -302,7 +305,7 @@ class JDETracker(object):
         logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
         logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
         logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-        return output_stracks
+        return output_stracks, activated_starcks
 
     def match(self, detections, strack_pool):
         dists = matching.embedding_distance(strack_pool, detections)
