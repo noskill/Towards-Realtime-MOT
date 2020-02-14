@@ -6,7 +6,7 @@ import argparse
 import motmetrics as mm
 
 import torch
-from tracker.multitracker import STrack
+from tracker.multitracker import STrack, JDETracker
 from multidetector import SubstractorTracker
 from utils import visualization as vis
 from utils.log import logger
@@ -42,22 +42,24 @@ def write_results(filename, results, data_type):
 def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_image=True, frame_rate=30):
     if save_dir:
         mkdir_if_missing(save_dir)
+    # tracker = JDETracker(opt, frame_rate=frame_rate)
     tracker = SubstractorTracker(opt, frame_rate=frame_rate)
     timer = Timer()
     results = []
     frame_id = 0
     manualMode = True
+    import time
     for path, img, img0 in dataloader:
+        frame_id += 1
         if frame_id % 20 == 0:
             logger.info('Processing frame {} ({:.2f} fps)'.format(frame_id, 1./max(1e-5, timer.average_time)))
-
+        # if frame_id < 700:
+        #     continue
         # run tracking
         timer.tic()
         blob = torch.from_numpy(img).cuda().unsqueeze(0)
         ''' Step 1: Network forward, get detections & embeddings'''
-
         online_targets = tracker.update(img0, blob)
-        #detections = substractor_detect(blob)
         online_tlwhs = []
         online_ids = []
         for t in online_targets:
@@ -80,9 +82,11 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
                 break
             elif k == ord('m') or k == ord('M'):
                 manualMode = not manualMode
+                if manualMode:
+                    cv2.waitKey(0)
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, '{:05d}.jpg'.format(frame_id)), online_im)
-        frame_id += 1
+
     # save results
     write_results(result_filename, results, data_type)
     return frame_id, timer.average_time, timer.calls
@@ -106,12 +110,14 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
         output_dir = os.path.join(".", '..','outputs', exp_name, seq) if save_images or save_videos else None
 
         logger.info('start seq: {}'.format(seq))
-        dataloader = datasets.LoadImages(osp.join(data_root, seq, 'img1'), opt.img_size)
+        dataloader = datasets.LoadVideo("/mnt/fileserver/shared/datasets/cameras/Odessa/Duke_on_the_left/set004_2020-02-11/fragment1.mp4")
+        dataloader = datasets.LoadVideo("/mnt/fileserver/shared/datasets/cameras/Odessa/Duke_on_the_left/fragments/meeting/meeting_set005_1:26:20-1:26:20.mp4")
+        # dataloader = datasets.LoadImages(osp.join(data_root, seq, 'img1'), opt.img_size)
         result_filename = os.path.join(result_root, '{}.txt'.format(seq))
         meta_info = open(os.path.join(data_root, seq, 'seqinfo.ini')).read() 
         frame_rate = int(meta_info[meta_info.find('frameRate')+10:meta_info.find('\nseqLength')])
         nf, ta, tc = eval_seq(opt, dataloader, data_type, result_filename,
-                              save_dir=output_dir, show_image=show_image, frame_rate=frame_rate)
+                              save_dir="./vidos", show_image=show_image, frame_rate=frame_rate)
         n_frame += nf
         timer_avgs.append(ta)
         timer_calls.append(tc)
