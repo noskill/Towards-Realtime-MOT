@@ -34,12 +34,12 @@ def train(
     f.close()
     cfg_dict = parse_model_cfg(cfg) 
     img_size = [int(cfg_dict[0]['width']), int(cfg_dict[0]['height'])]
-
     # Get dataloader
     transforms = T.Compose([T.ToTensor()])
     dataset = JointDataset(dataset_root, trainset_paths, img_size, augment=True, transforms=transforms)
+
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True,
-                                             num_workers=8, pin_memory=True, drop_last=True, collate_fn=collate_fn) 
+                                             num_workers=0, pin_memory=True, drop_last=True, collate_fn=collate_fn)
 
     # Initialize model
     model = Darknet(cfg_dict, dataset.nID)
@@ -147,7 +147,7 @@ def train(
         
         # Save latest checkpoint
         checkpoint = {'epoch': epoch,
-                      'model': model.module.state_dict(),
+                      'model': model.state_dict(),
                       'optimizer': optimizer.state_dict()}
         torch.save(checkpoint, latest)
 
@@ -156,7 +156,7 @@ def train(
         if epoch % opt.test_interval ==0:
             with torch.no_grad():
                 mAP, R, P = test.test(cfg, data_cfg, weights=latest, batch_size=batch_size, print_interval=40)
-                test.test_emb(cfg, data_cfg, weights=latest, batch_size=batch_size, print_interval=40)
+                # test.test_emb(cfg, data_cfg, weights=latest, batch_size=batch_size, print_interval=40)
 
 
         # Call scheduler.step() after opimizer.step() with pytorch > 1.1.0 
