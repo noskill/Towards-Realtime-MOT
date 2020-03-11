@@ -4,6 +4,7 @@ import cv2
 import logging
 import argparse
 import motmetrics as mm
+from collections import defaultdict
 
 import torch
 from tracker.multitracker import STrack, JDETracker
@@ -49,6 +50,10 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     frame_id = 0
     manualMode = True
     import time
+    # key = track id, value is list
+    # ['FrameId', 'Id', 'X', 'Y', 'Width', 'Height', 'Confidence', 'ClassId', 'Visibility', 'unused'],
+    # list contains (frame_id, tlwh)
+    history = defaultdict(list)
     for path, img, img0 in dataloader:
         frame_id += 1
         if frame_id % 20 == 0:
@@ -65,9 +70,10 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
         for t in online_targets:
             tlwh = t.tlwh
             tid = t.track_id
-            if tlwh[2] * tlwh[3] > opt.min_box_area and (t.tracklet_len > 2):
+            if (t.tracklet_age > 3):
                 online_tlwhs.append(tlwh)
                 online_ids.append(tid)
+                history[tid].append((frame_id, tlwh))
         timer.toc()
         # save results
         results.append((frame_id + 1, online_tlwhs, online_ids))
@@ -86,7 +92,15 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
                     cv2.waitKey(0)
         if save_dir is not None:
             cv2.imwrite(os.path.join(save_dir, '{:05d}.jpg'.format(frame_id)), online_im)
-
+    f = open('result.csv', 'w')
+    for key in history.keys():
+        for item in history[key]:
+            tlwh = [round(x, 2) for x in item[1]]
+            string = '{frame},{id},{x},{y},{w},{h},1,-1,-1'.format(frame=item[0], id=key,
+                                                           x=tlwh[0],y=tlwh[1],
+                                                           w=tlwh[2],h=tlwh[3])
+            f.write(string + '\n')
+    f.close()
     # save results
     write_results(result_filename, results, data_type)
     return frame_id, timer.average_time, timer.calls
@@ -111,7 +125,7 @@ def main(opt, data_root='/data/MOT16/train', det_root=None, seqs=('MOT16-05',), 
 
         logger.info('start seq: {}'.format(seq))
         dataloader = datasets.LoadVideo("/mnt/fileserver/shared/datasets/cameras/Odessa/Duke_on_the_left/set004_2020-02-11/fragment1.mp4")
-        dataloader = datasets.LoadVideo("/mnt/fileserver/shared/datasets/cameras/Odessa/Duke_on_the_left/fragments/meeting/meeting_set005_1:26:20-1:26:20.mp4")
+        dataloader = datasets.LoadVideo("/mnt/fileserver/shared/datasets/cameras/Odessa/Duke_on_the_left/fragments/child/child_set005_00:16:20-00:20:00.mp4")
         # dataloader = datasets.LoadImages(osp.join(data_root, seq, 'img1'), opt.img_size)
         result_filename = os.path.join(result_root, '{}.txt'.format(seq))
         meta_info = open(os.path.join(data_root, seq, 'seqinfo.ini')).read() 
