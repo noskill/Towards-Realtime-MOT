@@ -104,21 +104,28 @@ class LoadVideo:  # for inference
         self.count += 1
         if self.count == len(self):
             raise StopIteration
+        img, img0 = self.__read_image()
+
+        # cv2.imwrite(img_path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
+        return self.count, img, img0
+
+    def __read_image(self):
         # Read image
         res, img0 = self.cap.read()  # BGR
         assert img0 is not None, 'Failed to load frame {:d}'.format(self.count)
         img0 = cv2.resize(img0, (self.w, self.h))
-
         # Padded resize
         img, _, _, _ = letterbox(img0, height=self.height, width=self.width)
-
         # Normalize RGB
         img = img[:, :, ::-1].transpose(2, 0, 1)
         img = np.ascontiguousarray(img, dtype=np.float32)
         img /= 255.0
+        return img, img0
 
-        # cv2.imwrite(img_path + '.letterbox.jpg', 255 * img.transpose((1, 2, 0))[:, :, ::-1])  # save letterbox image
-        return self.count, img, img0
+    def __getitem__(self, item):
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, item)
+        img, img0 = self.__read_image()
+        return item, img, img0
     
     def __len__(self):
         return self.vn  # number of files

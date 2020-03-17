@@ -45,6 +45,7 @@ class KalmanFilter(object):
         self._motion_mat = np.eye(2 * ndim, 2 * ndim)
         for i in range(ndim):
             self._motion_mat[i, ndim + i] = dt
+        # matrix A from transition model z_t = A_t @ z_{t-1} + noise(t)
         self._update_mat = np.eye(ndim, 2 * ndim)
 
         # Motion and observation uncertainty are chosen relative to the current
@@ -214,10 +215,12 @@ class KalmanFilter(object):
             Returns the measurement-corrected state distribution.
 
         """
+        # predict
         projected_mean, projected_cov = self.project(mean, covariance)
 
         chol_factor, lower = scipy.linalg.cho_factor(
             projected_cov, lower=True, check_finite=False)
+        # self._update_mat is transition matrix A
         kalman_gain = scipy.linalg.cho_solve(
             (chol_factor, lower), np.dot(covariance, self._update_mat.T).T,
             check_finite=False).T

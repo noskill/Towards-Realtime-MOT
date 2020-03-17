@@ -311,12 +311,12 @@ def build_targets_thres(target, anchor_wh, nA, nC, nGh, nGw):
     nB = len(target)  # number of images in batch
     assert(len(anchor_wh)==nA)
 
-    tbox = torch.zeros(nB, nA, nGh, nGw, 4).cuda()  # batch size, anchors, grid size
-    tconf = torch.LongTensor(nB, nA, nGh, nGw).fill_(0).cuda()
-    tid = torch.LongTensor(nB, nA, nGh, nGw, 1).fill_(-1).cuda() 
+    tbox = torch.zeros(nB, nA, nGh, nGw, 4).to(anchor_wh.device)  # batch size, anchors, grid size
+    tconf = torch.LongTensor(nB, nA, nGh, nGw).fill_(0).to(anchor_wh.device)
+    tid = torch.LongTensor(nB, nA, nGh, nGw, 1).fill_(-1).to(anchor_wh.device)
     for b in range(nB):
         t = target[b]
-        t_id = t[:, 1].clone().long().cuda()
+        t_id = t[:, 1].clone().long()
         t = t[:,[0,2,3,4,5]]
         nTb = len(t)  # number of targets
         if nTb == 0:
@@ -335,7 +335,7 @@ def build_targets_thres(target, anchor_wh, nA, nC, nGh, nGw):
         anchor_mesh = generate_anchor(nGh, nGw, anchor_wh)
         anchor_list = anchor_mesh.permute(0,2,3,1).contiguous().view(-1, 4)              # Shpae (nA x nGh x nGw) x 4
         #print(anchor_list.shape, gt_boxes.shape)
-        iou_pdist = bbox_iou(anchor_list, gt_boxes)                                      # Shape (nA x nGh x nGw) x Ng
+        iou_pdist = bbox_iou(anchor_list.to(gt_boxes), gt_boxes)                                      # Shape (nA x nGh x nGw) x Ng
         iou_max, max_gt_index = torch.max(iou_pdist, dim=1)                              # Shape (nA x nGh x nGw), both
 
         iou_map = iou_max.view(nA, nGh, nGw)       
@@ -365,12 +365,12 @@ def build_targets_thres(target, anchor_wh, nA, nC, nGh, nGw):
 def generate_anchor(nGh, nGw, anchor_wh):
     nA = len(anchor_wh)
     yy, xx =torch.meshgrid(torch.arange(nGh), torch.arange(nGw))
-    xx, yy = xx.cuda(), yy.cuda()
+    xx, yy = xx, yy
 
     mesh = torch.stack([xx, yy], dim=0)                                              # Shape 2, nGh, nGw
     mesh = mesh.unsqueeze(0).repeat(nA,1,1,1).float()                                # Shape nA x 2 x nGh x nGw
     anchor_offset_mesh = anchor_wh.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, nGh,nGw) # Shape nA x 2 x nGh x nGw
-    anchor_mesh = torch.cat([mesh, anchor_offset_mesh], dim=1)                       # Shape nA x 4 x nGh x nGw
+    anchor_mesh = torch.cat([mesh.to(anchor_offset_mesh.device), anchor_offset_mesh], dim=1)                       # Shape nA x 4 x nGh x nGw
     return anchor_mesh
 
 def encode_delta(gt_box_list, fg_anchor_list):
