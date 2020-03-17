@@ -1,0 +1,15 @@
+{
+    "root":"/home/noskill/projects/Towards-Realtime-MOT",
+    "train":
+    {
+        "mot1":"./mot1/mot1.txt"
+    },
+    "test_emb":
+    {
+        "mot1":"./mot1/mot1.txt"
+    },
+    "test":
+    {
+        "mot1":"./mot1/mot1.txt"
+    }
+}

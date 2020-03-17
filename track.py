@@ -44,7 +44,7 @@ def eval_seq(opt, dataloader, data_type, result_filename, save_dir=None, show_im
     if save_dir:
         mkdir_if_missing(save_dir)
     # tracker = JDETracker(opt, frame_rate=frame_rate)
-    tracker = SubstractorTracker(opt, frame_rate=frame_rate)
+    tracker = SubstractorTracker(opt, frame_rate=frame_rate, device='cuda')
     timer = Timer()
     results = []
     frame_id = 0

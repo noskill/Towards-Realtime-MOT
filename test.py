@@ -49,7 +49,7 @@ def test(
     transforms = T.Compose([T.ToTensor()])
     dataset = JointDataset(dataset_root, test_path, img_size, augment=False, transforms=transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, 
-                                             num_workers=8, drop_last=False, collate_fn=collate_fn) 
+                                             num_workers=0, drop_last=False, collate_fn=collate_fn) 
 
     mean_mAP, mean_R, mean_P, seen = 0.0, 0.0, 0.0, 0
     print('%11s' * 5 % ('Image', 'Total', 'P', 'R', 'mAP'))
@@ -180,7 +180,7 @@ def test_emb(
     transforms = T.Compose([T.ToTensor()])
     dataset = JointDataset(dataset_root, test_paths, img_size, augment=False, transforms=transforms)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, 
-                                             num_workers=8, drop_last=False, collate_fn=collate_fn) 
+                                             num_workers=0, drop_last=False, collate_fn=collate_fn) 
     embedding, id_labels = [], []
     print('Extracting pedestrain features...')
     for batch_i, (imgs, targets, paths, shapes, targets_len) in enumerate(dataloader):

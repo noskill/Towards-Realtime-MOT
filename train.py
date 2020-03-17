@@ -20,6 +20,7 @@ def train(
         freeze_backbone=False,
         opt=None,
 ):
+    device = 'cuda'
     weights = 'weights' 
     mkdir_if_missing(weights)
     latest = osp.join(weights, 'latest.pt')
@@ -44,16 +45,16 @@ def train(
     # Initialize model
     model = Darknet(cfg_dict, dataset.nID)
 
-    
-
     cutoff = -1  # backbone reaches to cutoff layer
     start_epoch = 0
     if resume:
+        from tracker.multitracker import remove_module
         checkpoint = torch.load(latest, map_location='cpu')
 
+        mod_dict = {remove_module(k):v for (k,v) in checkpoint['model'].items()}
         # Load weights to resume from
-        model.load_state_dict(checkpoint['model'])
-        model.cuda().train()
+        model.load_state_dict(mod_dict)
+        model = model.train().to(device)
 
         # Set optimizer
         optimizer = torch.optim.SGD(filter(lambda x: x.requires_grad, model.parameters()), lr=opt.lr, momentum=.9)
@@ -73,12 +74,12 @@ def train(
             load_darknet_weights(model, osp.join(weights , 'yolov3-tiny.conv.15'))
             cutoff = 15
 
-        model.cuda().train()
+        model = model.train().to(device)
 
         # Set optimizer
         optimizer = torch.optim.SGD(filter(lambda x: x.requires_grad, model.parameters()), lr=opt.lr, momentum=.9, weight_decay=1e-4)
 
-    model = torch.nn.DataParallel(model)
+    model = torch.nn.DataParallel(model).to(device)
     # Set scheduler
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, 
             milestones=[int(0.5*opt.epochs), int(0.75*opt.epochs)], gamma=0.1)
@@ -116,9 +117,9 @@ def train(
                 lr = opt.lr * (i / burnin) **4 
                 for g in optimizer.param_groups:
                     g['lr'] = lr
-            
+
             # Compute loss, compute gradient, update parameters
-            loss, components = model(imgs.cuda(), targets.cuda(), targets_len.cuda())
+            loss, components = model(imgs.to(device), targets.to(device), targets_len.to(device))
             components = torch.mean(components.view(-1, 5),dim=0)
 
             loss = torch.mean(loss)
@@ -131,8 +132,12 @@ def train(
 
             # Running epoch-means of tracked metrics
             ui += 1
-            
-            for ii, key in enumerate(model.module.loss_names):
+
+            if isinstance(model, torch.nn.DataParallel):
+                loss_names = model.module.loss_names
+            else:
+                loss_names = model.loss_names
+            for ii, key in enumerate(loss_names):
                 rloss[key] = (rloss[key] * ui + components[ii]) / (ui + 1)
 
             s = ('%8s%12s' + '%10.3g' * 6) % (
@@ -153,7 +158,7 @@ def train(
 
 
         # Calculate mAP
-        if epoch % opt.test_interval ==0:
+        if epoch and epoch % opt.test_interval == 0:
             with torch.no_grad():
                 mAP, R, P = test.test(cfg, data_cfg, weights=latest, batch_size=batch_size, print_interval=40)
                 # test.test_emb(cfg, data_cfg, weights=latest, batch_size=batch_size, print_interval=40)
