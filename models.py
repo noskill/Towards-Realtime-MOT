@@ -156,10 +156,10 @@ class YOLOLayer(nn.Module):
         # Training
         if targets is not None:
             if test_emb:
-                tconf, tbox, tids = build_targets_max(targets, self.anchor_vec.cuda(), self.nA, self.nC, nGh, nGw)
+                tconf, tbox, tids = build_targets_max(targets, self.anchor_vec.to(targets[0].device), self.nA, self.nC, nGh, nGw)
             else:
-                tconf, tbox, tids = build_targets_thres(targets, self.anchor_vec.cuda(), self.nA, self.nC, nGh, nGw)
-            tconf, tbox, tids = tconf.cuda(), tbox.cuda(), tids.cuda()
+                tconf, tbox, tids = build_targets_thres(targets, self.anchor_vec.to(targets[0].device), self.nA, self.nC, nGh, nGw)
+            tconf, tbox, tids = tconf, tbox, tids
             mask = tconf > 0
 
             # Compute losses
@@ -171,8 +171,8 @@ class YOLOLayer(nn.Module):
             else:
                 FT = torch.cuda.FloatTensor if p_conf.is_cuda else torch.FloatTensor
                 lbox, lconf =  FT([0]), FT([0])
-            lconf =  self.SoftmaxLoss(p_conf, tconf)
-            lid = torch.Tensor(1).fill_(0).squeeze().cuda()
+            lconf =  self.SoftmaxLoss(p_conf, tconf.to(p_conf.device))
+            lid = torch.Tensor(1).fill_(0).squeeze()
             emb_mask,_ = mask.max(1)
             
             # For convenience we use max(1) to decide the id, TODO: more reseanable strategy
@@ -182,19 +182,22 @@ class YOLOLayer(nn.Module):
             embedding = self.emb_scale * F.normalize(embedding)
             nI = emb_mask.sum().float()
             
-            if  test_emb:
+            if test_emb:
                 if np.prod(embedding.shape)==0  or np.prod(tids.shape) == 0:
-                    return torch.zeros(0, self.emb_dim+1).cuda()
+                    return torch.zeros(0, self.emb_dim+1)
                 emb_and_gt = torch.cat([embedding, tids.float()], dim=1)
                 return emb_and_gt
             
             if len(embedding) > 1:
                 logits = classifier(embedding).contiguous()
-                lid =  self.IDLoss(logits, tids.squeeze())
+                lid = self.IDLoss(logits, tids.squeeze())
 
             # Sum loss components
-            loss = torch.exp(-self.s_r)*lbox + torch.exp(-self.s_c)*lconf + torch.exp(-self.s_id)*lid + \
-                   (self.s_r + self.s_c + self.s_id)
+            loss = lbox * 10 + lconf * 10 + lid
+
+            if torch.isnan(loss):
+                import pdb;pdb.set_trace()
+
             loss *= 0.5
 
             return loss, loss.item(), lbox.item(), lconf.item(), lid.item(), nT
@@ -204,7 +207,7 @@ class YOLOLayer(nn.Module):
             p_emb = F.normalize(p_emb.unsqueeze(1).repeat(1,self.nA,1,1,1).contiguous(), dim=-1)
             #p_emb_up = F.normalize(shift_tensor_vertically(p_emb, -self.shift[self.layer]), dim=-1)
             #p_emb_down = F.normalize(shift_tensor_vertically(p_emb, self.shift[self.layer]), dim=-1)
-            p_cls = torch.zeros(nB,self.nA,nGh,nGw,1).cuda()               # Temp
+            p_cls = torch.zeros(nB, self.nA, nGh, nGw, 1).to(p_conf.device)            # Temp
             p = torch.cat([p_box, p_conf, p_cls, p_emb], dim=-1)
             #p = torch.cat([p_box, p_conf, p_cls, p_emb, p_emb_up, p_emb_down], dim=-1)
             p[..., :4] = decode_delta_map(p[..., :4], self.anchor_vec.to(p))
@@ -272,10 +275,11 @@ class Darknet(nn.Module):
                 output.append(x)
             layer_outputs.append(x)
 
+        device = next(self.parameters()).device
         if is_training:
             self.losses['nT'] /= 3 
             output = [o.squeeze() for o in output]
-            return sum(output), torch.Tensor(list(self.losses.values())).cuda()
+            return sum(output).to(device), torch.Tensor(list(self.losses.values())).to(device)
         elif self.test_emb:
             return torch.cat(output, 0)
         return torch.cat(output, 1)
