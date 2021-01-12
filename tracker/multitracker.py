@@ -1,4 +1,3 @@
-from numba import jit
 from collections import deque
 import torch
 from utils.kalman_filter import KalmanFilter
@@ -103,7 +102,6 @@ class STrack(BaseTrack):
             self.update_features(new_track.curr_feat)
 
     @property
-    @jit
     def tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
                 width, height)`.
@@ -116,7 +114,6 @@ class STrack(BaseTrack):
         return ret
 
     @property
-    @jit
     def tlbr(self):
         """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
         `(top left, bottom right)`.
@@ -126,7 +123,6 @@ class STrack(BaseTrack):
         return ret
 
     @staticmethod
-    @jit
     def tlwh_to_xyah(tlwh):
         """Convert bounding box to format `(center x, center y, aspect ratio,
         height)`, where the aspect ratio is `width / height`.
@@ -140,14 +136,12 @@ class STrack(BaseTrack):
         return self.tlwh_to_xyah(self.tlwh)
 
     @staticmethod
-    @jit
     def tlbr_to_tlwh(tlbr):
         ret = np.asarray(tlbr).copy()
         ret[2:] -= ret[:2]
         return ret
 
     @staticmethod
-    @jit
     def tlwh_to_tlbr(tlwh):
         ret = np.asarray(tlwh).copy()
         ret[2:] += ret[:2]
@@ -197,12 +191,6 @@ class JDETracker(object):
 
         """
 
-        self.frame_id += 1
-        activated_starcks = []      # for storing active tracks, for the current frame
-        refind_stracks = []         # Lost Tracks whose detections are obtained in the current frame
-        lost_stracks = []           # The tracks which are not obtained in the current frame but are not removed.(Lost for some time lesser than the threshold for removing)
-        removed_stracks = []
-
         t1 = time.time()
         ''' Step 1: Network forward, get detections & embeddings'''
         with torch.no_grad():
@@ -225,8 +213,20 @@ class JDETracker(object):
 
         t2 = time.time()
         # print('Forward: {} s'.format(t2-t1))
+        return self._update(detections)
 
+    def _update(self, detections):
+        """
+        detections: List[STrack]
+        """
         ''' Add newly detected tracklets to tracked_stracks'''
+        self.frame_id += 1
+        activated_starcks = []      # for storing active tracks, for the current frame
+        refind_stracks = []         # Lost Tracks whose detections are obtained in the current frame
+        lost_stracks = []           # The tracks which are not obtained in the current frame but are not removed.(Lost for some time lesser than the threshold for removing)
+        removed_stracks = []
+
+
         unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
         for track in self.tracked_stracks:
